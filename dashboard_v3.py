@@ -228,8 +228,8 @@ ft_to_update = st.sidebar.selectbox('Which feature would you like to update', op
 if ft_to_update == '':
     default_value = 0
 else:
-    default_value = df_small[ft_to_update].mean()
-    new_value = st.sidebar.slider(ft_to_update, min_value = df_final[ft_to_update].min(), max_value = df_final[ft_to_update].max(), value = default_value)
+    default_value = float(df_small[ft_to_update].mean())
+    new_value = st.sidebar.slider(ft_to_update, min_value = df_final[float(ft_to_update].min()), max_value = float(df_final[ft_to_update].max()), value = default_value)
     if default_value == new_value:
         pass
     else:
