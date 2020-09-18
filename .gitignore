@@ -1,3 +1,6 @@
 data/.ipynb_checkpoints
 notebooks/.ipynb_checkpoints
 .DS_Store
+data/application_test.csv
+data/application_train.csv
+.ipynb_checkpoints

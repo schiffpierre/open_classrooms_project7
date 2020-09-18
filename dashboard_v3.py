@@ -8,6 +8,8 @@ import pickle
 import lime
 import lime.lime_tabular
 import seaborn as sns
+import plotly.express as px
+import plotly.graph_objects as go
 
 st.title("Credit Scoring Dashboard")
 st.markdown("**A tool to understand credit risk predictions**")
@@ -25,6 +27,12 @@ def load_scaled_data():
     'Function to load scaled data used to retrieve model predictions'
     df_final = pd.read_csv('data/df_final_sample.csv')
     return df_final
+
+
+def load_feature_descriptions():
+    'Function to load the feature descriptions'
+    df_desc = pd.read_csv('data/feature_descriptions.csv', encoding= 'unicode_escape')
+    return df_desc
 
 @st.cache(allow_output_mutation=True)
 def import_models():
@@ -54,6 +62,49 @@ def clean_lime_output(string):
 
     return (string, signe_confirme)
 
+def clean_lime_output_new(df_exp):
+    df_exp_full = pd.DataFrame(columns = ['lower boundary', 'lower boundary sign', 'feature', 'upper boundary', 'upper boundary sign'])
+    for i in df_exp[0]:
+        if (i.count('>') + i.count('<')) > 1:
+            split = i.split(' ')
+            low_bound = split[0]
+            low_bound_sign = split[1]
+            up_bound = split[-1]
+            up_bound_sign = split[-2]
+            if len(low_bound_sign)>1:
+                start = 6
+            else:
+                start = 7
+            if len(up_bound_sign)>1:
+                end = -8
+            else:
+                end = -7
+            feature = i[start:end]
+            df_exp_full = df_exp_full.append({'lower boundary': low_bound,
+                                            'lower boundary sign': low_bound_sign,
+                                            'upper boundary': up_bound,
+                                            'upper boundary sign': up_bound_sign,
+                                            'feature': feature
+                                            }, ignore_index=True)
+        else:
+            split = i.split(' ')
+            low_bound = np.nan
+            low_bound_sign = np.nan
+            up_bound = split[-1]
+            up_bound_sign = split[-2]
+            if len(up_bound_sign)>1:
+                end = -8
+            else:
+                end = -7
+            feature = i[:end]
+            df_exp_full = df_exp_full.append({'lower boundary': low_bound,
+                                            'lower boundary sign': low_bound_sign,
+                                            'upper boundary': up_bound,
+                                            'upper boundary sign': up_bound_sign,
+                                            'feature': feature
+                                            }, ignore_index=True)
+    return df_exp_full
+
 def filter_dataset():
     'Filters dataset down to a single line, being the chosen client ID'
     df_small = df_final[df_final['SK_ID_CURR'] == int(client_id)]
@@ -72,19 +123,15 @@ def interpretation(client):
     # Generate explainer object
     explainer = lime.lime_tabular.LimeTabularExplainer(training_data = np.array(df_lime.sample(int(0.1*df_lime.shape[0]), random_state=20)),feature_names = df_lime.columns,training_labels = df_lime.columns.tolist(),verbose=1,random_state=20,mode='classification')
     # Generate specific instance explainer
-    exp = explainer.explain_instance(data_row = X.to_numpy().ravel(), predict_fn = model.predict_proba)
+    exp = explainer.explain_instance(data_row = X.to_numpy().ravel(), predict_fn = model.predict_proba, num_features = 5)
     # Generate dataframe based on Lime output
-    df_interpret = pd.DataFrame(exp.as_list())
-    # Clean up the format of the data frame
-    df_interpret['feature'] = df_interpret[0].apply(lambda x : clean_lime_output(x)[0][0])
-    df_interpret['sign'] = df_interpret[0].apply(lambda x : clean_lime_output(x)[1])
-    df_interpret['limit_value'] = df_interpret[0].apply(lambda x: clean_lime_output(x)[0][-1])
-    df_interpret['difference'] = df_interpret[1]
-    # Rename columns
-    df_interpret = df_interpret[['feature', 'sign', 'limit_value', 'difference']]
-    # Add distinction between normal and default customers
-    df_interpret['contribution'] = 'normal'
-    df_interpret.loc[df_interpret['difference']>=0, 'contribution'] = 'default'
+    df_exp = pd.DataFrame(exp.as_list())
+    df_exp_full = clean_lime_output_new(df_exp)
+    df_exp_full = df_exp_full.merge(df_exp[1], left_index = True, right_index = True)
+    df_exp_full = df_exp_full.rename(columns = {1: 'importance'})
+    df_exp_full['default_risk'] = 'decreases'
+    df_exp_full.loc[df_exp_full['importance']>=0, 'default_risk'] = 'increases'
+    df_interpret = df_exp_full
     # Add the customer's value, global average, non-default avg, default avg, and nearest neighbours avg for each feature
     df_interpret['customer_value'] = [X[feature].mean() for feature in df_interpret['feature'].values.tolist()]
     df_interpret['global_average'] = [df_final[feature].mean() for feature in df_interpret['feature'].values.tolist()]
@@ -100,54 +147,7 @@ def interpretation(client):
     nn_df = df_final[df_final.index.isin(nn_idx)]
     # Average of nearest neighbours
     df_interpret['similar_clients_average'] = [nn_df[feature].mean() for feature in df_interpret['feature'].values.tolist()]
-    # Put together the top 3 features for each
-    df_interpret = pd.concat([df_interpret[df_interpret['contribution'] == 'default'].head(3), df_interpret[df_interpret['contribution'] == 'normal'].head(3)], axis=0)
-    return df_interpret.sort_values(by='contribution')
-
-def display_graphs():
-    'Generates a graph to help interpret the model prediction'
-    # Generating 2 rows and 3 columns of graphs
-    f, ax = plt.subplots(2, 3, figsize=(12,12), sharex=False)
-    plt.subplots_adjust(hspace = 0.5, wspace = 0.75)
-
-    i = 0
-    j = 0
-    liste_cols = ['Client', 'Average', 'Avg Non-Default', 'Avg Default','Similar Clients']
-    for feature in df_interpret['feature']:
-
-        sns.despine(ax=None, left=True, bottom=True, trim=False)
-        sns.barplot(x = df_interpret[df_interpret['feature']==feature][['customer_value', 'global_average', 'non_default_average', 'default_average', 'similar_clients_average']].values[0],
-                y = liste_cols,
-                ax = ax[i, j])
-        sns.axes_style("white")
-
-        if len(feature) >= 18:
-            chaine = feature[:18]+'\n'+feature[18:]
-        else : 
-            chaine = feature
-        if df_interpret[df_interpret['feature']==feature]['contribution'].values[0] == 'default':
-            chaine += '\n(Higher values reduce default risk)'
-            ax[i,j].set_facecolor('#e3ffec') #contribue négativement
-            ax[i,j].set_title(chaine, color='#017320')
-        else:
-            chaine += '\n(Lower values reduce default risk)'
-            ax[i,j].set_facecolor('#ffe3e3')
-            ax[i,j].set_title(chaine, color='#990024')
-
-
-        if j == 2:
-            i+=1
-            j=0
-        else:
-            j+=1
-        if i == 2:
-            break;
-    for ax in f.axes:
-        plt.sca(ax)
-        plt.xticks(rotation=45)
-    if i!=2: #Cases without enough features to explain (ex : 445260)
-        True
-    st.pyplot()
+    return df_interpret.sort_values(by='importance')
 
 def get_prediction():
     'Retrieve prediction either from the Heroku API or from the locally loaded model'
@@ -190,39 +190,31 @@ def top_20_credit_requests():
     y_pos = credit_df.sort_values(by = 'AMT_CREDIT').index.astype(str)
     credit_amount = credit_df.sort_values(by = 'AMT_CREDIT')['AMT_CREDIT']
     # Create graph
-    plt.title('Clients with the highest credit requests')
-    plt.ylabel('Client ID')
-    plt.xlabel('Credit Amount')
-    fig = plt.gcf()
-    fig.set_size_inches(12,8)
-    plt.barh(y_pos, credit_amount)
-    st.pyplot()
+    fig = px.bar(x=credit_amount, y=y_pos, orientation='h', labels = dict(x = "Credit Amount", y = "Client ID"), title = "Clients with the highest credit requests")
+    fig.update_yaxes(type='category')
+    st.plotly_chart(fig)
 
 def target_amounts():
     'Generates a graph showing the number of people that have default compared to not defaulted'
     # Create table
-    default_df = df.pivot_table('SK_ID_CURR', 'TARGET', aggfunc = 'count')
-    #plt.bar(default_df.index.astype(str), default_df['SK_ID_CURR'])
+    default_df = df.pivot_table('SK_ID_CURR', 'TARGET', aggfunc = 'count').reset_index()
+    labels = ['Not in default', 'Default']
     # Create graph
-    plt.title('Number of clients with default vs non-defaults')
-    #plt.ylabel('Number of clients')
-    #plt.xlabel('Default (0 = OK, 1 = Default)')
-    #plt.bar(default_df.index.astype(str), default_df['SK_ID_CURR'])
-    def make_autopct(values):
-        def my_autopct(pct):
-            total = sum(values)
-            val = int(round(pct*total/100.0))
-            return '{p:.2f}%  ({v:d})'.format(p=pct,v=val)
-        return my_autopct
-    values = default_df['SK_ID_CURR']
-    plt.pie(values,labels = ['OK', 'Default'], autopct = make_autopct(values), colors = ['green', 'red'], explode = (0,0.2))
-    st.pyplot()
+    fig = px.pie(default_df, values='SK_ID_CURR',
+                names=labels, 
+                title='Proportion of clients defaulting vs clients not defaulting',
+                hover_data = ['SK_ID_CURR'],
+                labels={'SK_ID_CURR': 'Number of Clients'}
+                )
+    fig.update_traces(textposition='inside', textinfo='percent+label')
+    st.plotly_chart(fig)
 
 # Running the dashboard
 
 # Load data and models
 df = load_data_unscaled()
 df_final = load_scaled_data()
+df_desc = load_feature_descriptions()
 model, kdt = import_models()
 valid_ids = df['SK_ID_CURR'].values.tolist()
 
@@ -253,10 +245,34 @@ else:
             get_prediction()
             with st.spinner('Loading prediction details. This may take a few minutes.'):
                 df_interpret = interpretation(client_id)
-                st.dataframe(df_interpret)
+                df_interpret = pd.merge(df_interpret,df_desc,left_on='feature', right_on='Row', how='left')
+                df_interpret.drop(columns = ['Unnamed: 0', 'Row'], inplace = True)
+                #st.dataframe(df_interpret)
 
-            # Display graphs
-            display_graphs()
+            # Display written explanation
+            for i in range(5):
+                row = df_interpret.iloc[i]
+                st.subheader(f"{row['feature']}")
+                st.markdown(f"_{row['Description']}_")
+                if row['lower boundary'] is np.nan:
+                    st.markdown(f"When {row['feature']} is {row['upper boundary sign']} {row['upper boundary']}, the risk of the client defaulting **{row['default_risk']}**.")
+                else:
+                    st.markdown(f"When {row['feature']} is {row['lower boundary sign']} {row['lower boundary']} and {row['upper boundary sign']} {row['upper boundary']}, the risk of the client defaulting **{row['default_risk']}**.")
+
+            # Display graph
+                col_df = ['similar_clients_average', 'default_average', 'non_default_average', 'global_average', 'customer_value']
+                col_list = ['Similar Clients', 'Avg Default', 'Avg Non-Default', 'Average', 'Target Client']
+                print(row[col_df])
+                colors = ['lightslategray',] * 5
+                colors[1] = 'crimson'
+                fig = px.bar(x = row[col_df], 
+                            y = col_list, 
+                            orientation='h', 
+                            title = row['feature'],
+                            labels = dict(x = row['feature'], y = "Client Group"),
+                            )
+                fig.update_yaxes(type='category')
+                st.plotly_chart(fig)
 
             # Sidebar - Value update
             features_list = df_interpret['feature'].values.tolist()
