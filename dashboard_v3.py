@@ -9,12 +9,11 @@ import lime
 import lime.lime_tabular
 import seaborn as sns
 import plotly.express as px
-import plotly.graph_objects as go
 
-st.title("Credit Scoring Dashboard")
-st.markdown("**A tool to understand credit risk predictions**")
+st.title("Credit Risk Prediction Dashboard :credit_card:")
+st.markdown("**A dashboard to understand the factors influencing credit risk predictions**")
 st.sidebar.header("Feature Update")
-st.sidebar.markdown('This section allows you to update the values of key features to see the impact on the score')
+st.sidebar.markdown('This section allows you to update the values of key features to see the impact on the credit risk score.')
 
 @st.cache
 def load_data_unscaled():
@@ -27,7 +26,6 @@ def load_scaled_data():
     'Function to load scaled data used to retrieve model predictions'
     df_final = pd.read_csv('data/df_final_sample.csv')
     return df_final
-
 
 def load_feature_descriptions():
     'Function to load the feature descriptions'
@@ -49,20 +47,7 @@ def example_ids():
     st.write("Examples of client IDs:")
     st.write(str(sample).replace('[','').replace(']', ''))
 
-def clean_lime_output(string):
-    'Function to clean the Lime output'
-    signes = ['=>', '<=', '<', '>']
-    for signe in signes :
-        if signe in string :
-            signe_confirme = signe
-        string = string.replace(signe, '____')
-    string = string.split('____')
-    if string[0][-1] == ' ':
-        string[0] = string[0][:-1]
-
-    return (string, signe_confirme)
-
-def clean_lime_output_new(df_exp):
+def clean_lime_output(df_exp):
     df_exp_full = pd.DataFrame(columns = ['lower boundary', 'lower boundary sign', 'feature', 'upper boundary', 'upper boundary sign'])
     for i in df_exp[0]:
         if (i.count('>') + i.count('<')) > 1:
@@ -126,7 +111,7 @@ def interpretation(client):
     exp = explainer.explain_instance(data_row = X.to_numpy().ravel(), predict_fn = model.predict_proba, num_features = 5)
     # Generate dataframe based on Lime output
     df_exp = pd.DataFrame(exp.as_list())
-    df_exp_full = clean_lime_output_new(df_exp)
+    df_exp_full = clean_lime_output(df_exp)
     df_exp_full = df_exp_full.merge(df_exp[1], left_index = True, right_index = True)
     df_exp_full = df_exp_full.rename(columns = {1: 'importance'})
     df_exp_full['default_risk'] = 'decreases'
@@ -190,7 +175,13 @@ def top_20_credit_requests():
     y_pos = credit_df.sort_values(by = 'AMT_CREDIT').index.astype(str)
     credit_amount = credit_df.sort_values(by = 'AMT_CREDIT')['AMT_CREDIT']
     # Create graph
-    fig = px.bar(x=credit_amount, y=y_pos, orientation='h', labels = dict(x = "Credit Amount", y = "Client ID"), title = "Clients with the highest credit requests")
+    fig = px.bar(x=credit_amount, 
+                y=y_pos, 
+                orientation='h', 
+                labels = dict(x = "Credit Amount", y = "Client ID"), 
+                title = "Clients with the highest credit requests",
+                width = 800,
+                height=600)
     fig.update_yaxes(type='category')
     st.plotly_chart(fig)
 
@@ -220,7 +211,9 @@ valid_ids = df['SK_ID_CURR'].values.tolist()
 
 #Choose the dashboard page to be displayed
 dashboard_page = ''
-dashboard_page = st.selectbox('Please select which dashboard you would like to see:', options = ['','Global Dashboard', 'Client-Specific Dashboard'])
+st.markdown('* The **Global** dashboard provides general information about loans at the Home Credit Group.')
+st.markdown('* The **Client-specific** dashboard lets you get a credit risk prediction for a specific client and provides insights into the prediction.')
+dashboard_page = st.selectbox('Please select a dashboard below:', options = ['','Global Dashboard', 'Client-Specific Dashboard'])
 if dashboard_page == '':
     pass
 elif dashboard_page == 'Global Dashboard':
@@ -229,15 +222,13 @@ elif dashboard_page == 'Global Dashboard':
 else:
     # Print out sample IDs
     example_ids()
-
     # Get client ID
     client_id = st.text_input('ID Client')
-
     if client_id == '':
         st.write('Please enter a Client ID.')
     else:
         if int(client_id) not in valid_ids:
-            st.write('This ID does not exist. Please enter a valid one.')
+            st.markdown(':exclamation: This ID does not exist. Please enter a valid one.')
         else:
             # Generate filtered dataset
             df_small = filter_dataset()
@@ -247,7 +238,6 @@ else:
                 df_interpret = interpretation(client_id)
                 df_interpret = pd.merge(df_interpret,df_desc,left_on='feature', right_on='Row', how='left')
                 df_interpret.drop(columns = ['Unnamed: 0', 'Row'], inplace = True)
-                #st.dataframe(df_interpret)
 
             # Display written explanation
             for i in range(5):
@@ -262,17 +252,14 @@ else:
             # Display graph
                 col_df = ['similar_clients_average', 'default_average', 'non_default_average', 'global_average', 'customer_value']
                 col_list = ['Similar Clients', 'Avg Default', 'Avg Non-Default', 'Average', 'Target Client']
-                print(row[col_df])
-                colors = ['lightslategray',] * 5
-                colors[1] = 'crimson'
                 fig = px.bar(x = row[col_df], 
                             y = col_list, 
                             orientation='h', 
-                            title = row['feature'],
                             labels = dict(x = row['feature'], y = "Client Group"),
                             )
                 fig.update_yaxes(type='category')
                 st.plotly_chart(fig)
+            st.markdown('_Prediction based on Logistic Regression model trained on Home Credit Risk data._')
 
             # Sidebar - Value update
             features_list = df_interpret['feature'].values.tolist()
@@ -282,6 +269,7 @@ else:
             if ft_to_update == '':
                 default_value = 0
             else:
+                st.sidebar.markdown(f"**Description:** _{df_interpret[df_interpret['feature']==ft_to_update]['Description'].values[0]}_")
                 default_value = float(df_small[ft_to_update].mean())
                 new_value = st.sidebar.slider(ft_to_update, min_value = float(df_final[ft_to_update].min()), max_value = float(df_final[ft_to_update].max()), value = default_value)
                 if default_value == new_value:
@@ -289,3 +277,4 @@ else:
                 else:
                     df_small[ft_to_update].values[0] = new_value
                     get_prediction_update()
+st.markdown('**_Dashboard made Pierre Schifflers as part of the Data Science track on OpenClassrooms._**')
