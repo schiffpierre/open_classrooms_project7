@@ -18,6 +18,13 @@ def load_models():
     model = pickle.load(open('models/LRModel2.obj','rb'))
     return model
 
+@app.route("/")
+def hello():
+    """
+    Ping the API.
+    """
+    return jsonify({"text":"Hello, the API is up and running..." })
+
 @app.route('/predict', methods=['POST'])
 def predict():
     # parse input features from request
