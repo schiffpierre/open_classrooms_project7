@@ -238,7 +238,11 @@ else:
                 df_interpret = interpretation(client_id)
                 df_interpret = pd.merge(df_interpret,df_desc,left_on='feature', right_on='Row', how='left')
                 df_interpret.drop(columns = ['Unnamed: 0', 'Row'], inplace = True)
-
+            st.text("")
+            st.text("")
+            st.header("Prediction Interpretation")
+            st.write("Below are the five features that have the most impact on this client's credit risk prediction:")
+            st.text("")
             # Display written explanation
             for i in range(5):
                 row = df_interpret.iloc[i]
@@ -256,6 +260,7 @@ else:
                             y = col_list, 
                             orientation='h', 
                             labels = dict(x = row['feature'], y = "Client Group"),
+                            color = col_list
                             )
                 fig.update_yaxes(type='category')
                 st.plotly_chart(fig)
@@ -277,4 +282,4 @@ else:
                 else:
                     df_small[ft_to_update].values[0] = new_value
                     get_prediction_update()
-st.markdown('**_Dashboard made Pierre Schifflers as part of the Data Science track on OpenClassrooms._**')
+st.markdown('**_Dashboard made by Pierre Schifflers as part of the Data Science track on OpenClassrooms._**')
