@@ -241,7 +241,13 @@ else:
             st.text("")
             st.text("")
             st.header("Prediction Interpretation")
-            st.write("Below are the five features that have the most impact on this client's credit risk prediction:")
+            st.write("Below are the five features that have the most impact on this client's credit risk prediction, with comparisons to 4 key groups:")
+            st.markdown("""
+                        * **Average**: Average feature value across all customers 
+                    \n* **Avg Non-Default**: Average feature value for clients who have **not** defaulted on their loan
+                    \n* **Avg Default**: Average feature value for clients who have defaulted on their loan
+                    \n* **Similar Clients**: Average feature value for 20 most similar clients based on age, income, gender, credit length and credit as proportion of income
+                    """)
             st.text("")
             # Display written explanation
             for i in range(5):
@@ -271,6 +277,7 @@ else:
             features_list = tuple([''] + features_list)
             ft_to_update = ''
             ft_to_update = st.sidebar.selectbox('Which feature would you like to update', options = features_list)
+
             if ft_to_update == '':
                 default_value = 0
             else:
